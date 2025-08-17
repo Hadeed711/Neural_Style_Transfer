@@ -14,6 +14,27 @@ A powerful and user-friendly web application that transforms your photos into ar
 
 ## 🚀 Quick Start
 
+### Option 1: Streamlit Cloud Deployment (Recommended)
+
+This app is optimized for Streamlit Cloud deployment with the following enhancements:
+
+**Cloud Compatibility Features:**
+- ✅ Uses `opencv-python-headless` for cloud environments
+- ✅ Includes `packages.txt` for system dependencies
+- ✅ Graceful fallbacks when OpenCV is unavailable
+- ✅ PIL-based post-processing backup
+- ✅ Optimized memory usage for cloud resources
+
+**Deploy to Streamlit Cloud:**
+1. Fork this repository to your GitHub account
+2. Visit [Streamlit Cloud](https://streamlit.io/cloud)
+3. Connect your GitHub account
+4. Select this repository
+5. Set main file path: `app.py`
+6. Deploy and share your app!
+
+### Option 2: Local Installation
+
 1. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
@@ -94,10 +115,17 @@ The app provides several quality analysis metrics:
 
 ## 🛠️ Troubleshooting
 
+### Common Issues:
 - **Blurry output**: Increase sharpening or processing resolution
 - **Too stylized**: Decrease style strength, increase content preservation
 - **Artifacts**: Reduce sharpening strength or enable noise reduction
 - **Slow processing**: Reduce processing resolution or disable post-processing
+
+### Cloud Deployment Issues:
+- **OpenCV errors**: The app automatically falls back to PIL-based processing
+- **Missing system dependencies**: Ensure `packages.txt` is included in your repo
+- **Memory issues**: Use lower processing resolutions (512px) for cloud deployment
+- **Import errors**: Check that `requirements.txt` uses `opencv-python-headless`
 
 ## 📝 License
 

@@ -8,7 +8,14 @@ from io import BytesIO
 from skimage.metrics import structural_similarity as ssim
 from torchvision.transforms.functional import gaussian_blur
 from PIL import Image, ImageFilter, ImageEnhance
-import cv2
+
+# Try to import OpenCV with fallback for cloud deployment
+try:
+    import cv2
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    st.warning("⚠️ OpenCV not available. Some advanced post-processing features will be disabled.")
 
 # Set page configuration for better appearance
 st.set_page_config(
@@ -190,7 +197,11 @@ def tensor_to_np(tensor):
     return (arr * 255).astype(np.uint8)
 
 def advanced_post_processing(img_array, sharpen=1.2, contrast=1.1, saturation=1.0, noise_reduction=True):
-    """Advanced post-processing pipeline"""
+    """Advanced post-processing pipeline with fallback for cloud deployment"""
+    if not CV2_AVAILABLE:
+        # Fallback processing using PIL when OpenCV is not available
+        return pil_post_processing(img_array, sharpen, contrast, saturation)
+    
     try:
         # Convert to float for processing
         img_float = img_array.astype(np.float32) / 255.0
@@ -228,6 +239,34 @@ def advanced_post_processing(img_array, sharpen=1.2, contrast=1.1, saturation=1.
         
     except Exception as e:
         st.warning(f"Advanced post-processing failed, using fallback: {str(e)}")
+        return pil_post_processing(img_array, sharpen, contrast, saturation)
+
+def pil_post_processing(img_array, sharpen=1.2, contrast=1.1, saturation=1.0):
+    """Fallback post-processing using PIL when OpenCV is not available"""
+    try:
+        # Convert numpy array to PIL Image
+        img = Image.fromarray(img_array)
+        
+        # Apply sharpening
+        if sharpen > 1.0:
+            enhancer = ImageEnhance.Sharpness(img)
+            img = enhancer.enhance(sharpen)
+        
+        # Apply contrast enhancement
+        if contrast != 1.0:
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(contrast)
+        
+        # Apply saturation adjustment
+        if saturation != 1.0:
+            enhancer = ImageEnhance.Color(img)
+            img = enhancer.enhance(saturation)
+        
+        # Convert back to numpy array
+        return np.array(img)
+        
+    except Exception as e:
+        st.warning(f"PIL post-processing failed: {str(e)}")
         return img_array
 
 # — Enhanced Helper Functions —
@@ -530,12 +569,16 @@ if generate_button:
         
         # Color difference metrics
         try:
-            orig_uint8 = (orig_arr * 255).astype(np.uint8)
-            res_uint8 = (res_arr * 255).astype(np.uint8)
-            
-            lab_orig = cv2.cvtColor(orig_uint8, cv2.COLOR_RGB2LAB).astype(np.float32)
-            lab_res = cv2.cvtColor(res_uint8, cv2.COLOR_RGB2LAB).astype(np.float32)
-            delta_e = np.mean(np.sqrt(np.sum((lab_orig - lab_res) ** 2, axis=2)))
+            if CV2_AVAILABLE:
+                orig_uint8 = (orig_arr * 255).astype(np.uint8)
+                res_uint8 = (res_arr * 255).astype(np.uint8)
+                
+                lab_orig = cv2.cvtColor(orig_uint8, cv2.COLOR_RGB2LAB).astype(np.float32)
+                lab_res = cv2.cvtColor(res_uint8, cv2.COLOR_RGB2LAB).astype(np.float32)
+                delta_e = np.mean(np.sqrt(np.sum((lab_orig - lab_res) ** 2, axis=2)))
+            else:
+                # Fallback RGB difference calculation
+                delta_e = np.mean(np.sqrt(np.sum((orig_arr - res_arr) ** 2, axis=2))) * 100
         except:
             delta_e = np.mean(np.sqrt(np.sum((orig_arr - res_arr) ** 2, axis=2))) * 100
         
