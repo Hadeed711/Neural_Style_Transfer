@@ -10,26 +10,105 @@ from torchvision.transforms.functional import gaussian_blur
 from PIL import Image, ImageFilter, ImageEnhance
 import cv2
 
-# DEBUG: show where we're running and what lives in models/
-cwd = os.getcwd()
-st.write(f"ℹ️ Current working directory: `{cwd}`")
-model_dir = os.path.join(cwd, "models")
-st.write(f"ℹ️ Checking `{model_dir}` …")
-st.write(f"📂 Files in `models/`: {os.listdir(model_dir) if os.path.isdir(model_dir) else 'MISSING'}")
+# Set page configuration for better appearance
+st.set_page_config(
+    page_title="AI Neural Style Transfer Studio",
+    page_icon="🎨",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("🎨 Enhanced Neural Style Transfer (AdaIN)")
-st.markdown("*Transform your images with the power of AI and artistic style*")
+# Custom CSS for better styling
+st.markdown("""
+<style>
+.main-header {
+    text-align: center;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    padding: 2rem;
+    border-radius: 10px;
+    margin-bottom: 2rem;
+    color: white;
+}
+.stProgress .st-bo {
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+}
+.upload-box {
+    border: 2px dashed #667eea;
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+    background: rgba(102, 126, 234, 0.1);
+}
+</style>
+""", unsafe_allow_html=True)
+
+cwd = os.getcwd()
+
+# Enhanced header
+st.markdown("""
+<div class="main-header">
+    <h1>🎨 AI Neural Style Transfer Studio</h1>
+    <p style="font-size: 1.2em; margin: 0;">Transform your images with the magic of artificial intelligence and artistic style</p>
+</div>
+""", unsafe_allow_html=True)
 
 # — Upload widgets —
-st.header("📤 Upload Images")
-col1, col2 = st.columns(2)
-with col1:
-    content_file = st.file_uploader("📷 Content Image", type=['jpg','jpeg','png'])
-with col2:
-    style_files = st.file_uploader("🎭 Style Image(s)", type=['jpg','jpeg','png'], accept_multiple_files=True)
+st.markdown("## 📤 Upload Your Images")
+st.markdown("*Choose a content image and one or more style images to create your masterpiece*")
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-st.info(f"🖥️ Using device: {device}")
+col1, col2 = st.columns([1, 1])
+with col1:
+    st.markdown("### 📷 Content Image")
+    content_file = st.file_uploader(
+        "Upload your main image", 
+        type=['jpg','jpeg','png'],
+        help="This is the image that will be transformed with the artistic style"
+    )
+    
+with col2:
+    st.markdown("### 🎭 Style Images")
+    style_files = st.file_uploader(
+        "Upload artistic style references", 
+        type=['jpg','jpeg','png'], 
+        accept_multiple_files=True,
+        help="Upload one or more artistic images to apply their style to your content"
+    )
+
+# Initialize models silently
+@st.cache_resource
+def load_models():
+    """Load neural network models with caching for performance"""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    try:
+        # Load VGG encoder
+        from net import vgg as adain_vgg
+        adain_vgg = adain_vgg.to(device)
+        vgg_path = os.path.join(cwd, "models", "vgg_normalised.pth")
+        adain_vgg.load_state_dict(torch.load(vgg_path, map_location=device))
+        adain_vgg.eval()
+        
+        # Build encoder up to relu4_1
+        encoder = nn.Sequential(*list(adain_vgg.children())[:31]).to(device).eval()
+        
+        # Load decoder
+        from net import decoder as official_decoder
+        decoder = official_decoder.to(device).eval()
+        decoder_path = os.path.join(cwd, "models", "decoder.pth")
+        decoder.load_state_dict(torch.load(decoder_path, map_location=device))
+        
+        return encoder, decoder, device
+        
+    except Exception as e:
+        st.error(f"❌ Failed to load neural network models: {str(e)}")
+        st.error("Please ensure both `vgg_normalised.pth` and `decoder.pth` are in the `models/` folder")
+        st.stop()
+
+encoder, decoder, device = load_models()
+
+# Show device info
+device_icon = "🚀" if device.type == "cuda" else "💻"
+st.sidebar.success(f"{device_icon} Running on: {device.type.upper()}")
 
 # — Enhanced AdaIN function with better feature matching —
 def adaptive_instance_normalization(c_feat, s_feat, eps=1e-5):
@@ -88,44 +167,9 @@ def guided_style_transfer(c_feat, s_feat, guidance_strength=0.3):
     
     return guided_result
 
-# — Encoder: use the AdaIN-normalized VGG from net.py —
-from net import vgg as adain_vgg
-adain_vgg = adain_vgg.to(device)
-
-# Load the pretrained, normalized VGG weights
-vgg_path = os.path.join(cwd, "models", "vgg_normalised.pth")
-st.write("🔍 Loading AdaIN-normalized VGG from:", vgg_path, "| Exists?", os.path.exists(vgg_path))
-try:
-    adain_vgg.load_state_dict(torch.load(vgg_path, map_location=device))
-    adain_vgg.eval()
-    st.write("✅ AdaIN VGG loaded successfully.")
-except Exception as e:
-    st.error("❌ Failed to load AdaIN VGG. Make sure `vgg_normalised.pth` matches net.vgg architecture.")
-    st.text(str(e))
-    st.text(traceback.format_exc())
-    st.stop()
-
-# Build encoder up to relu4_1 using net.vgg layers
-encoder = nn.Sequential(*list(adain_vgg.children())[:31]).to(device).eval()
-
-# — Enhanced Decoder: import official definition —
-from net import decoder as official_decoder
-decoder = official_decoder.to(device).eval()
-
-# — Load decoder weights with debug —
-decoder_path = os.path.join(cwd, "models", "decoder.pth")
-st.write("🔍 Loading decoder from:", decoder_path, "| Exists?", os.path.exists(decoder_path))
-try:
-    decoder.load_state_dict(torch.load(decoder_path, map_location=device))
-    st.write("✅ Decoder loaded successfully.")
-except Exception as e:
-    st.error("❌ Decoder load failed! Please check model compatibility.")
-    st.text(f"Path: {decoder_path}")
-    st.text(str(e))
-    st.text(traceback.format_exc())
-    st.stop()
-
-# — Enhanced Helper Functions —
+# — Advanced Stylization Parameters —
+st.sidebar.markdown("## 🎨 Style Parameters")
+st.sidebar.markdown("*Customize your artistic transformation*")
 def load_image(img: Image.Image, resize=False, target_size=512):
     """Enhanced image loading with better preprocessing"""
     if resize:
@@ -186,8 +230,29 @@ def advanced_post_processing(img_array, sharpen=1.2, contrast=1.1, saturation=1.
         st.warning(f"Advanced post-processing failed, using fallback: {str(e)}")
         return img_array
 
+# — Enhanced Helper Functions —
+def load_image(img: Image.Image, resize=False, target_size=512):
+    """Enhanced image loading with better preprocessing"""
+    if resize:
+        # Maintain aspect ratio while resizing
+        img.thumbnail((target_size, target_size), Image.Resampling.LANCZOS)
+        
+    transform_steps = [
+        transforms.ToTensor(),  # Convert to [0,1]
+    ]
+    
+    tensor = transforms.Compose(transform_steps)(img).unsqueeze(0).to(device)
+    return tensor
+
+def tensor_to_np(tensor):
+    """Enhanced tensor to numpy conversion with better handling"""
+    arr = tensor.cpu().clamp(0, 1).squeeze(0).numpy().transpose(1,2,0)
+    arr = np.nan_to_num(arr, nan=0.0, posinf=1.0, neginf=0.0)
+    return (arr * 255).astype(np.uint8)
+
 # — Advanced Stylization Parameters —
-st.sidebar.header("🎨 Style Parameters")
+st.sidebar.markdown("## 🎨 Style Parameters")
+st.sidebar.markdown("*Customize your artistic transformation*")
 
 # Preset configurations
 preset = st.sidebar.selectbox("🎯 Quick Presets", [
@@ -238,27 +303,46 @@ if preset == "Custom":
 noise_reduction = st.sidebar.checkbox("Noise Reduction", value=True)
 
 # Processing size selection
-processing_size = st.sidebar.selectbox("Processing Resolution", 
+processing_size = st.sidebar.selectbox("🔧 Processing Resolution", 
                                      [512, 768, 1024], 
                                      index=1,
                                      help="Higher = better quality but slower")
 
-if st.button("🎨 Generate Style Transfer", type="primary", use_container_width=True):
+# Generate button with enhanced styling
+st.markdown("---")
+generate_col1, generate_col2, generate_col3 = st.columns([1, 2, 1])
+with generate_col2:
+    generate_button = st.button(
+        "🚀 Create Artistic Masterpiece", 
+        type="primary", 
+        use_container_width=True,
+        help="Click to start the neural style transfer process"
+    )
+if generate_button:
     if not content_file or not style_files:
-        st.error("Please upload one content image and at least one style image.")
+        st.error("🚫 Please upload both a content image and at least one style image to proceed.")
+        st.info("💡 **Tip:** Choose high-quality images for the best results!")
     else:
-        with st.spinner("🔄 Processing style transfer..."):
+        # Enhanced processing with better UX
+        with st.spinner("🎨 Creating your artistic masterpiece..."):
+            status_container = st.container()
             progress_bar = st.progress(0)
             
-            # Load images with enhanced preprocessing
+            with status_container:
+                status_text = st.empty()
+                
+            status_text.text("📥 Loading and preprocessing images...")
             progress_bar.progress(10)
+            # Load images with enhanced preprocessing
             cont_img = Image.open(content_file).convert("RGB")
             original_size = cont_img.size
             
+            status_text.text("🎭 Preparing style references...")
             # Prepare style images
             style_imgs = [Image.open(f).convert("RGB") for f in style_files]
             progress_bar.progress(20)
             
+            status_text.text("🔄 Converting to neural network format...")
             # Load tensors with better sizing
             target_size = processing_size if not preserve_size else min(processing_size, max(original_size))
             cont_ten = load_image(cont_img, resize=not preserve_size, target_size=target_size)
@@ -266,12 +350,14 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
             progress_bar.progress(30)
 
             # Enhanced stylization process
+            status_text.text("🧠 Extracting neural features...")
             with torch.no_grad():
                 # Extract features
                 c_feat = encoder(cont_ten)
                 s_feats = [encoder(sty) for sty in style_tens]
                 progress_bar.progress(50)
                 
+                status_text.text("🎨 Applying artistic style transfer...")
                 # Multi-style blending with advanced techniques
                 if len(s_feats) > 1:
                     # Compute style similarity weights
@@ -298,6 +384,7 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
                 
                 progress_bar.progress(60)
                 
+                status_text.text("✨ Blending content and style...")
                 # Apply enhanced AdaIN based on settings
                 if guided_transfer:
                     t = guided_style_transfer(c_feat, combined_style, guidance_strength=content_weight)
@@ -311,12 +398,14 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
                 
                 progress_bar.progress(70)
                 
+                status_text.text("🖼️ Generating final artwork...")
                 # Generate output
                 stylized = decoder(t)
                 stylized = torch.clamp(stylized, 0, 1).squeeze(0)
                 progress_bar.progress(80)
 
             # Convert to displayable image
+            status_text.text("🔧 Applying final touches...")
             out_np = tensor_to_np(stylized)
             progress_bar.progress(90)
             
@@ -336,34 +425,48 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
             if preserve_size and out_img.size != original_size:
                 out_img = out_img.resize(original_size, Image.Resampling.LANCZOS)
 
+            status_text.text("✅ Masterpiece complete!")
             progress_bar.progress(100)
 
-        # ==== Enhanced Display ====
-        st.success("✅ Style transfer completed!")
+        # Clear the status text after completion
+        status_text.empty()
         
-        # Main result display
-        col1, col2 = st.columns(2)
-        with col1:
-            st.image(cont_img, caption="📷 Content Image", use_container_width=True)
-        with col2:
-            st.image(out_img, caption="🎨 Stylized Output", use_container_width=True)
+        # ==== Enhanced Results Display ====
+        st.markdown("---")
+        st.markdown("## 🎉 Your Artistic Masterpiece is Ready!")
+        
+        # Main result display with enhanced layout
+        result_col1, result_col2 = st.columns(2, gap="large")
+        with result_col1:
+            st.markdown("### 📷 Original Content")
+            st.image(cont_img, caption="Your original image", use_container_width=True)
+        with result_col2:
+            st.markdown("### 🎨 Stylized Artwork")
+            st.image(out_img, caption="AI-generated artistic transformation", use_container_width=True)
 
         # Style images preview with weights
-        if len(style_imgs) > 0:
-            st.write("### 🎭 Style Images Used")
-            if len(style_imgs) > 1:
-                st.write("*Weights are automatically calculated based on content similarity*")
+        if len(style_imgs) > 1:
+            st.markdown("### 🎭 Style References Used")
+            st.info("💡 **Smart Blending:** Weights were automatically calculated based on content similarity")
             
             style_cols = st.columns(min(len(style_imgs), 4))
             for i, (img, weight) in enumerate(zip(style_imgs[:4], style_weights[:4])):
                 with style_cols[i]:
                     st.image(img, caption=f"Style {i+1} (Weight: {weight:.2f})", use_container_width=True)
+        elif len(style_imgs) == 1:
+            st.markdown("### 🎭 Style Reference")
+            style_col1, style_col2, style_col3 = st.columns([1, 2, 1])
+            with style_col2:
+                st.image(style_imgs[0], caption="Applied artistic style", use_container_width=True)
 
-        # Download options
-        st.write("### 📥 Download Options")
-        col1, col2, col3 = st.columns(3)
+        # Download options with enhanced styling
+        st.markdown("---")
+        st.markdown("### 📥 Download Your Masterpiece")
+        st.markdown("*Choose your preferred format and quality*")
         
-        with col1:
+        download_col1, download_col2, download_col3 = st.columns(3, gap="medium")
+        
+        with download_col1:
             buf_png = BytesIO()
             out_img.save(buf_png, "PNG", quality=95)
             st.download_button(
@@ -374,7 +477,7 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
                 use_container_width=True
             )
         
-        with col2:
+        with download_col2:
             buf_jpg = BytesIO()
             out_img.save(buf_jpg, "JPEG", quality=95, optimize=True)
             st.download_button(
@@ -385,7 +488,7 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
                 use_container_width=True
             )
             
-        with col3:
+        with download_col3:
             # Create a comparison image
             max_height = max(cont_img.height, out_img.height)
             comparison = Image.new('RGB', (cont_img.width + out_img.width + 10, max_height), color='white')
@@ -403,7 +506,9 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
             )
 
         # Enhanced quality metrics
-        st.write("## 📊 Quality Analysis")
+        st.markdown("---")
+        st.markdown("## 📊 Quality Analysis")
+        st.markdown("*Technical analysis of your artistic transformation*")
         
         # Resize for fair comparison
         comp_size = (min(512, original_size[0]), min(512, original_size[1]))
@@ -434,30 +539,30 @@ if st.button("🎨 Generate Style Transfer", type="primary", use_container_width
         except:
             delta_e = np.mean(np.sqrt(np.sum((orig_arr - res_arr) ** 2, axis=2))) * 100
         
-        # Display metrics
+        # Display metrics with enhanced presentation
         metric_cols = st.columns(4)
         with metric_cols[0]:
-            st.metric("SSIM Score", f"{ssim_score:.4f}", 
+            st.metric("🔍 SSIM Score", f"{ssim_score:.4f}", 
                      delta=f"{ssim_score-0.5:.3f}" if ssim_score > 0 else None,
                      help="Structural similarity (higher is better, 0-1)")
         with metric_cols[1]:
-            st.metric("PSNR", f"{psnr_score:.2f} dB", 
+            st.metric("📡 PSNR", f"{psnr_score:.2f} dB", 
                      delta=f"{psnr_score-20:.1f}" if psnr_score < 100 else None,
                      help="Peak signal-to-noise ratio")
         with metric_cols[2]:
-            st.metric("Color Difference (ΔE)", f"{delta_e:.2f}", 
+            st.metric("🎨 Color Difference (ΔE)", f"{delta_e:.2f}", 
                      help="Perceptual color difference (lower is more similar)")
         with metric_cols[3]:
             style_strength = min(1, delta_e / 50)
-            st.metric("Style Transfer Strength", f"{style_strength:.3f}", 
+            st.metric("⚡ Style Transfer Strength", f"{style_strength:.3f}", 
                      help="How much style was applied (0-1)")
 
 # Perfect slider combinations guide
-with st.expander("🎯 Perfect Slider Combinations Guide"):
+with st.expander("🎯 Optimal Settings Guide - Master the Art of Style Transfer"):
     st.markdown("""
-    ## 🎨 Optimal Settings for Different Styles
+    ## 🎨 Perfected Settings for Different Artistic Styles
     
-    ### 🖼️ **Van Gogh Style (Starry Night)**
+    ### 🖼️ **Van Gogh Style (Starry Night, Sunflowers)**
     - **Style Strength (α)**: 0.75-0.85
     - **Content Preservation**: 0.2-0.3
     - **Multi-Scale**: ✅ Enabled
@@ -466,7 +571,7 @@ with st.expander("🎯 Perfect Slider Combinations Guide"):
     - **Contrast**: 1.15-1.25
     - **Saturation**: 1.1-1.2
     
-    ### 🎭 **Abstract/Picasso Style**
+    ### 🎭 **Abstract/Picasso Style (Cubism, Modern Art)**
     - **Style Strength (α)**: 0.85-0.95
     - **Content Preservation**: 0.1-0.2
     - **Multi-Scale**: ✅ Enabled
@@ -475,7 +580,7 @@ with st.expander("🎯 Perfect Slider Combinations Guide"):
     - **Contrast**: 1.2-1.4
     - **Saturation**: 1.1-1.3
     
-    ### 📸 **Photographic/Realistic Styles**
+    ### 📸 **Photographic/Realistic Styles (Film, Vintage)**
     - **Style Strength (α)**: 0.4-0.6
     - **Content Preservation**: 0.4-0.6
     - **Multi-Scale**: ❌ Disabled
@@ -484,7 +589,7 @@ with st.expander("🎯 Perfect Slider Combinations Guide"):
     - **Contrast**: 1.0-1.05
     - **Saturation**: 0.95-1.05
     
-    ### 🌊 **Watercolor/Soft Styles**
+    ### 🌊 **Watercolor/Soft Styles (Impressionism)**
     - **Style Strength (α)**: 0.6-0.75
     - **Content Preservation**: 0.3-0.4
     - **Multi-Scale**: ✅ Enabled
@@ -493,7 +598,7 @@ with st.expander("🎯 Perfect Slider Combinations Guide"):
     - **Contrast**: 1.0-1.1
     - **Saturation**: 1.05-1.15
     
-    ### ⚡ **High Detail/Texture Styles**
+    ### ⚡ **High Detail/Texture Styles (Gothic, Ornate)**
     - **Style Strength (α)**: 0.8-0.9
     - **Content Preservation**: 0.15-0.25
     - **Multi-Scale**: ✅ Enabled
@@ -502,44 +607,56 @@ with st.expander("🎯 Perfect Slider Combinations Guide"):
     - **Contrast**: 1.15-1.3
     - **Saturation**: 1.0-1.1
     
-    ### 💡 **Pro Tips**
-    1. **For portraits**: Keep content preservation > 0.4
-    2. **For landscapes**: Multi-scale processing works best
-    3. **For text/documents**: Use guided transfer + high content preservation
-    4. **For artistic effects**: Disable guided transfer for more dramatic results
-    5. **Processing size**: Use 768px for best quality/speed balance
+    ### 💡 **Pro Tips from AI Artists**
+    1. **For portraits**: Keep content preservation > 0.4 to maintain facial features
+    2. **For landscapes**: Multi-scale processing captures both broad strokes and fine details
+    3. **For text/documents**: Use guided transfer + high content preservation (0.6+)
+    4. **For dramatic effects**: Disable guided transfer for more abstract results
+    5. **Processing size**: 768px offers the sweet spot for quality vs. speed
+    6. **Multiple styles**: The AI automatically weights styles - experiment with contrasting art!
     """)
 
 # Information and tips
-with st.expander("💡 Advanced Tips & Troubleshooting"):
+with st.expander("💡 Advanced Tips & Troubleshooting - Become a Style Transfer Expert"):
     st.markdown("""
-    ### 🎯 **For Best Quality Results:**
-    - **Image Resolution**: Use high-resolution images (1024px+ on longest side)
-    - **Style Selection**: Choose styles with similar lighting to your content
-    - **Processing Size**: 768px offers the best quality/speed balance
-    - **Multiple Styles**: The algorithm automatically weights styles based on content similarity
+    ### 🎯 **For Professional-Quality Results:**
+    - **📐 Image Resolution**: Use high-resolution images (1024px+ on longest side) for gallery-quality output
+    - **💡 Style Selection**: Choose styles with similar lighting conditions to your content for harmonious results
+    - **⚙️ Processing Size**: 768px offers optimal quality/speed balance for most use cases
+    - **🎨 Multiple Styles**: The AI intelligently blends multiple styles based on content similarity
     
-    ### 🔧 **Parameter Tuning:**
-    - **Alpha (Style Strength)**: Start with 0.7, increase for more style, decrease for more content
-    - **Content Preservation**: Higher values (0.4+) for faces/important details
-    - **Multi-Scale**: Always enable for better texture transfer
-    - **Guided Transfer**: Enable for content-aware style application
+    ### 🔧 **Parameter Mastery:**
+    - **🎚️ Alpha (Style Strength)**: Start with 0.7, increase for more artistic flair, decrease for subtle effects
+    - **🛡️ Content Preservation**: Use 0.4+ for faces and important details, 0.2 for abstract transformations
+    - **🔄 Multi-Scale**: Essential for capturing fine textures and broad artistic strokes simultaneously
+    - **🎯 Guided Transfer**: Enables content-aware style application for more intelligent results
     
     ### 🚀 **Performance Optimization:**
-    - Use 512px processing size for quick previews
-    - Disable noise reduction for faster processing
-    - Use JPEG download for smaller file sizes
+    - Use 512px processing size for quick previews and experiments
+    - Disable noise reduction for faster processing on clean images
+    - Choose JPEG download for smaller file sizes when sharing online
     
-    ### ⚠️ **Troubleshooting:**
-    - **Artifacts**: Reduce sharpening strength
-    - **Too stylized**: Decrease alpha, increase content preservation
-    - **Not enough style**: Increase alpha, enable multi-scale
-    - **Colors too saturated**: Reduce saturation boost
-    - **Blurry output**: Increase sharpening, check processing resolution
+    ### 🔧 **Troubleshooting Common Issues:**
+    - **🔍 Artifacts/Noise**: Reduce sharpening strength or enable noise reduction
+    - **😵 Too stylized/unrecognizable**: Decrease alpha, increase content preservation
+    - **😴 Not enough style impact**: Increase alpha, enable multi-scale processing
+    - **🌈 Oversaturated colors**: Reduce saturation boost or choose different style images
+    - **😕 Blurry output**: Increase sharpening, check processing resolution, or use higher quality input images
+    - **⏱️ Slow processing**: Reduce processing resolution or disable advanced post-processing
+    
+    ### 🎨 **Creative Techniques:**
+    - **Layer styles**: Use multiple complementary style images for unique blends
+    - **Seasonal themes**: Match style lighting with content season/time of day
+    - **Texture experiments**: Try architectural styles on natural images and vice versa
+    - **Portrait enhancement**: Use artistic portrait styles on your photos for professional results
     """)
 
-st.info("📌 Make sure `models/decoder.pth` and `models/vgg_normalised.pth` are in the `models/` folder.")
-
-# Footer
+# Footer with enhanced styling
 st.markdown("---")
-st.markdown("*Enhanced Neural Style Transfer with AdaIN • Built with ❤️ using Streamlit & PyTorch*")
+st.markdown("""
+<div style="text-align: center; padding: 2rem; background: linear-gradient(90deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 10px; margin-top: 2rem;">
+    <h3 style="color: #667eea; margin-bottom: 1rem;">🎨 AI Neural Style Transfer Studio</h3>
+    <p style="margin: 0; color: #666;">Built with ❤️ using Streamlit, PyTorch & Advanced AI • Transform your world with artificial creativity</p>
+    <p style="margin: 0.5rem 0 0 0; font-size: 0.9em; color: #888;">Powered by Adaptive Instance Normalization (AdaIN) Neural Networks</p>
+</div>
+""", unsafe_allow_html=True)
