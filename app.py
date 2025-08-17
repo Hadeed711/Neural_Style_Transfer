@@ -699,7 +699,7 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; padding: 2rem; background: linear-gradient(90deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); border-radius: 10px; margin-top: 2rem;">
     <h3 style="color: #667eea; margin-bottom: 1rem;">🎨 AI Neural Style Transfer Studio</h3>
-    <p style="margin: 0; color: #666;">Built with ❤️ using Streamlit, PyTorch & Advanced AI • Transform your world with artificial creativity</p>
+    <p style="margin: 0; color: #666;">Built with ❤️ by Hadeed Ahmad using Streamlit, PyTorch & Advanced AI • Transform your world with artificial creativity</p>
     <p style="margin: 0.5rem 0 0 0; font-size: 0.9em; color: #888;">Powered by Adaptive Instance Normalization (AdaIN) Neural Networks</p>
 </div>
 """, unsafe_allow_html=True)
