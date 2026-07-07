@@ -4,13 +4,16 @@ A powerful and user-friendly web application that transforms your photos into ar
 
 ## ✨ Features
 
-- **🎯 Smart Presets**: Quick configurations for different artistic styles
-- **🔄 Multi-Scale Processing**: Better texture transfer at multiple scales
-- **🧠 Guided Style Transfer**: Content-aware style application
-- **📊 Quality Analysis**: Technical metrics to evaluate your results
-- **🎨 Advanced Post-Processing**: Sharpening, contrast, and saturation controls
-- **📥 Multiple Download Formats**: PNG, JPEG, and comparison images
-- **💡 Expert Tips**: Built-in guidance for optimal results
+- **🎯 Smart Presets**: One-click configurations that prefill all controls — tweak freely afterwards
+- **🔀 Interactive Before/After Slider**: Drag to compare the original and stylized image
+- **🎭 Multi-Style Blending**: Mix several styles with automatic (content-aware) or manual weights
+- **🔁 Style Refinement Passes**: Re-stylize the output 1–3 times for a stronger, more painterly look
+- **🌈 Color Preservation**: Apply the style's texture while keeping your photo's original colors
+- **🧠 Guided Style Transfer**: Content-aware protection of edges, faces and text
+- **📊 Quality Analysis**: SSIM, PSNR, ΔE and style-strength metrics for every result
+- **🎨 Advanced Post-Processing**: Denoise, unsharp mask, CLAHE contrast, saturation (OpenCV with PIL fallback)
+- **🖼️ Session Gallery**: Your recent results stay available; downloads never wipe the current result
+- **📥 Multiple Download Formats**: PNG, JPEG, and side-by-side comparison images
 
 ## 🚀 Quick Start
 
@@ -67,36 +70,39 @@ Make sure you have these model files in the `models/` folder:
 ### Van Gogh Style
 - Style Strength: 0.75-0.85
 - Content Preservation: 0.2-0.3
-- Multi-Scale: ✅ Enabled
+- Refinement Passes: 2
 - Guided Transfer: ✅ Enabled
 
 ### Abstract/Picasso Style
 - Style Strength: 0.85-0.95
-- Content Preservation: 0.1-0.2
-- Multi-Scale: ✅ Enabled
+- Content Preservation: 0.05-0.2
+- Refinement Passes: 3
 - Guided Transfer: ❌ Disabled
 
 ### Photographic Styles
 - Style Strength: 0.4-0.6
 - Content Preservation: 0.4-0.6
-- Multi-Scale: ❌ Disabled
+- Refinement Passes: 1
 - Guided Transfer: ✅ Enabled
+- Preserve Original Colors: ✅ Enabled
 
 ## 🔧 Technical Details
 
-- **Backend**: PyTorch neural networks
-- **Frontend**: Streamlit web framework
-- **Algorithm**: AdaIN (Adaptive Instance Normalization)
-- **Processing**: GPU acceleration when available
-- **Image Formats**: JPG, JPEG, PNG support
+- **Backend**: PyTorch neural networks (`pipeline.py` — UI-independent, testable core)
+- **Frontend**: Streamlit web framework (`app.py` — presentation and state only)
+- **Algorithm**: AdaIN (Adaptive Instance Normalization); multiple styles are blended by
+  interpolating their AdaIN statistics, so style images of any resolution mix safely
+- **Processing**: GPU acceleration when available; dimensions are snapped to the network
+  stride so the decoder output always matches the input exactly
+- **Image Formats**: JPG, JPEG, PNG, WEBP support (EXIF orientation handled)
 
 ## 💡 Pro Tips
 
-1. **For portraits**: Keep content preservation > 0.4
-2. **For landscapes**: Enable multi-scale processing
+1. **For portraits**: Keep content preservation > 0.4 and enable color preservation
+2. **For stronger style**: Add refinement passes instead of pushing α to 1.0
 3. **For dramatic effects**: Disable guided transfer
 4. **Processing size**: 768px offers the best quality/speed balance
-5. **Multiple styles**: The AI automatically weights and blends them
+5. **Multiple styles**: Auto weighting blends them by content similarity, or set manual weights
 
 ## 🚀 Performance
 
