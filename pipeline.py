@@ -189,7 +189,9 @@ def _cv2_post_process(img_array, sharpen, contrast, saturation, noise_reduction)
     img_f = img_array.astype(np.float32) / 255.0
 
     if noise_reduction:
-        img_f = cv2.bilateralFilter(img_f, d=7, sigmaColor=0.08, sigmaSpace=5)
+        # Near-zero sigmaSpace keeps this edge-preserving without visibly
+        # softening the image (matches the original tuning).
+        img_f = cv2.bilateralFilter(img_f, d=9, sigmaColor=0.08, sigmaSpace=0.08)
 
     if sharpen != 1.0:
         blur = cv2.GaussianBlur(img_f, (0, 0), 1.5)
@@ -204,8 +206,7 @@ def _cv2_post_process(img_array, sharpen, contrast, saturation, noise_reduction)
         u8 = np.clip(img_f * 255, 0, 255).astype(np.uint8)
         lab = cv2.cvtColor(u8, cv2.COLOR_RGB2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=1.0 + (contrast - 1.0) * 4.0,
-                                tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.0 * contrast, tileGridSize=(8, 8))
         lab = cv2.merge([clahe.apply(l), a, b])
         img_f = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB).astype(np.float32) / 255.0
     elif contrast < 1.0:  # linear contrast reduction

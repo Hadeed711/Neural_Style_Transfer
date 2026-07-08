@@ -94,9 +94,9 @@ except Exception as e:  # corrupt weights, torch issues, …
 # ------------------------------------------------------- presets & defaults
 DEFAULTS = {
     "alpha": 0.70, "guidance": 0.30, "guided": True, "passes": 1,
-    "color_preserve": False, "enhance": True, "sharpen": 1.15,
-    "contrast": 1.05, "saturation": 1.05, "noise_reduction": True,
-    "proc_size": 512,
+    "color_preserve": False, "enhance": True, "sharpen": 1.2,
+    "contrast": 1.1, "saturation": 1.0, "noise_reduction": True,
+    "proc_size": 768,
 }
 
 PRESETS = {
